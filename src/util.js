@@ -44,6 +44,37 @@ export function parseHM(time) {
   return h < 24 && min < 60 ? { hour: h, minute: min } : null;
 }
 
+export function startMinutes(time) {
+  const hm = parseHM(time);
+  return hm ? hm.hour * 60 + hm.minute : null;
+}
+
+// Untimed tasks sink to the bottom rather than scrambling the order of timed ones.
+export function byTime(a, b) {
+  const x = startMinutes(a.time);
+  const y = startMinutes(b.time);
+  if (x === null && y === null) return 0;
+  if (x === null) return 1;
+  if (y === null) return -1;
+  return x - y;
+}
+
+// Drives the "happening now" highlight and the dimming of blocks whose window has gone.
+export function taskPhase(task, nowMin) {
+  const start = startMinutes(task.time);
+  if (start === null) return 'untimed';
+  const endHm = /(\d{1,2}):(\d{2})\D+(\d{1,2}):(\d{2})/.exec(task.time || '');
+  const end = endHm ? +endHm[3] * 60 + +endHm[4] : start + 60;
+  if (nowMin >= start && nowMin < end) return 'now';
+  if (nowMin < start) return nowMin >= start - 30 ? 'soon' : 'later';
+  return 'past';
+}
+
+export function subProgress(task) {
+  const subs = task?.subs || [];
+  return { done: subs.filter((s) => s.done).length, total: subs.length };
+}
+
 // expo-notifications weekday: 1 = Sunday ... 7 = Saturday. WEEK_ORDER starts at Monday.
 export const weekdayFor = (i) => ((i + 1) % 7) + 1;
 

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Text, View, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { C, MANTRA } from '../theme';
 
 export function Label({ children, style }) {
@@ -8,6 +9,17 @@ export function Label({ children, style }) {
 
 export function Card({ children, style }) {
   return <View style={[styles.card, style]}>{children}</View>;
+}
+
+export function Empty({ icon, title, body, action }) {
+  return (
+    <View style={styles.empty}>
+      <Ionicons name={icon} size={26} color={C.txt3} />
+      <Text style={styles.emptyTitle}>{title}</Text>
+      <Text style={styles.emptyBody}>{body}</Text>
+      {action}
+    </View>
+  );
 }
 
 export function Bar({ pct, style }) {
@@ -61,6 +73,12 @@ export function Ticker() {
 const styles = StyleSheet.create({
   label: { fontSize: 9, letterSpacing: 1.6, color: C.txt3, textTransform: 'uppercase', fontWeight: '700' },
   card: { backgroundColor: 'rgba(20,20,24,0.9)', borderWidth: 0.5, borderColor: C.line, borderRadius: 14, padding: 14 },
+  empty: {
+    alignItems: 'center', paddingVertical: 34, paddingHorizontal: 24, gap: 9,
+    borderWidth: 0.5, borderColor: C.line, borderRadius: 14, borderStyle: 'dashed', marginTop: 14,
+  },
+  emptyTitle: { fontSize: 14, color: C.txt, fontWeight: '600' },
+  emptyBody: { fontSize: 12, color: C.txt3, textAlign: 'center', lineHeight: 18 },
   barTrack: { height: 5, backgroundColor: C.bg2, borderRadius: 3, overflow: 'hidden' },
   barFill: { height: '100%', backgroundColor: C.accent, borderRadius: 3 },
   ticker: { overflow: 'hidden', backgroundColor: C.bg1, borderBottomWidth: 0.5, borderBottomColor: C.line, paddingVertical: 7 },

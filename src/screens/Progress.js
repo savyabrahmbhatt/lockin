@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
 import { C } from '../theme';
-import { Card, Label, Bar } from '../components/ui';
+import { Card, Label, Bar, Empty } from '../components/ui';
 import { DAY_LABELS, weekStats, catColor, MAX_DAY_WEIGHT } from '../util';
 import { weekInsights } from '../ai';
 import { getApiKey } from '../storage';
@@ -57,6 +57,16 @@ export default function Progress({ state }) {
       <Text style={styles.h1}>Progress</Text>
       <Text style={styles.sub}>This is what showing up actually bought you.</Text>
 
+      {!s.total ? (
+        <Empty
+          icon="bar-chart-outline"
+          title="Nothing to measure yet"
+          body="Close out a few blocks and this fills with your completion rate, effort split and the days you actually hold."
+        />
+      ) : null}
+
+      {s.total ? (
+        <>
       <Card style={{ marginTop: 16 }}>
         <Text style={styles.big}>{s.pct}%</Text>
         <Text style={styles.sub}>Of everything you closed out, this much got done.</Text>
@@ -139,6 +149,9 @@ export default function Progress({ state }) {
           )}
         </TouchableOpacity>
       </Card>
+
+        </>
+      ) : null}
 
       {state.goals.length ? (
         <Card style={{ marginTop: 10 }}>

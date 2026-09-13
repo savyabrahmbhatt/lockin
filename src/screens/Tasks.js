@@ -1,7 +1,7 @@
 import React from 'react';
 import { Text, ScrollView, StyleSheet } from 'react-native';
 import { C } from '../theme';
-import { Label } from '../components/ui';
+import { Label, Empty } from '../components/ui';
 import TaskRow from '../components/TaskRow';
 import { WEEK_ORDER, DAY_LABELS, catColor, removeTask, moveTask } from '../util';
 
@@ -22,10 +22,21 @@ export default function Tasks({ state, setState }) {
     <ScrollView contentContainerStyle={styles.body}>
       <Label>Everything in the week</Label>
       <Text style={styles.h1}>Tasks</Text>
-      <Text style={styles.sub}>{all.length} blocks across seven days.</Text>
+      <Text style={styles.sub}>
+        {all.length ? `${all.length} blocks across seven days, grouped by area.` : 'Nothing scheduled yet.'}
+      </Text>
+      {!all.length ? (
+        <Empty
+          icon="albums-outline"
+          title="No tasks yet"
+          body="Once the coach builds your week, everything lands here grouped by category."
+        />
+      ) : null}
       {groups.map((g) => (
         <React.Fragment key={g.cat.name}>
-          <Label style={{ marginTop: 20, marginBottom: 2, color: g.cat.color }}>{g.cat.name}</Label>
+          <Label style={{ marginTop: 22, marginBottom: 2, color: g.cat.color }}>
+            {g.cat.name} — {g.items.filter((x) => x.t.state === 'done').length}/{g.items.length} done
+          </Label>
           {g.items.map((x) => (
             <TaskRow
               key={x.d + x.i}

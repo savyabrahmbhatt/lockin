@@ -3,7 +3,9 @@ import {
   View, Text, TouchableOpacity, StyleSheet, SafeAreaView, StatusBar, Platform, KeyboardAvoidingView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { C } from './src/theme';
+import { tap } from './src/haptics';
 import Background from './src/components/Background';
 import Setup from './src/screens/Setup';
 import Onboarding from './src/screens/Onboarding';
@@ -25,6 +27,15 @@ const TABS = [
 ];
 
 export default function App() {
+  return (
+    <SafeAreaProvider>
+      <Shell />
+    </SafeAreaProvider>
+  );
+}
+
+function Shell() {
+  const insets = useSafeAreaInsets();
   const [state, setState] = useState(EMPTY);
   const [ready, setReady] = useState(false);
   const [hasKey, setHasKey] = useState(false);
@@ -84,13 +95,24 @@ export default function App() {
       >
         <View style={{ flex: 1 }}>{screen}</View>
         {state.onboarded && !setup ? (
-          <View style={styles.nav}>
-            {TABS.map((t) => (
-              <TouchableOpacity key={t.key} style={styles.navBtn} onPress={() => setTab(t.key)}>
-                <Ionicons name={t.icon} size={20} color={tab === t.key ? C.accent : C.txt2} />
-                <Text style={[styles.navText, tab === t.key && { color: C.accent }]}>{t.label}</Text>
-              </TouchableOpacity>
-            ))}
+          <View style={[styles.nav, { paddingBottom: 10 + insets.bottom }]}>
+            {TABS.map((t) => {
+              const on = tab === t.key;
+              return (
+                <TouchableOpacity
+                  key={t.key}
+                  style={styles.navBtn}
+                  onPress={() => {
+                    if (!on) tap();
+                    setTab(t.key);
+                  }}
+                >
+                  <View style={[styles.navMark, on && { backgroundColor: C.accent }]} />
+                  <Ionicons name={on ? t.icon.replace('-outline', '') : t.icon} size={21} color={on ? C.accent : C.txt2} />
+                  <Text style={[styles.navText, on && { color: C.accent, fontWeight: '700' }]}>{t.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         ) : null}
       </KeyboardAvoidingView>
@@ -101,6 +123,7 @@ export default function App() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg0, paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0 },
   nav: { flexDirection: 'row', borderTopWidth: 0.5, borderTopColor: C.line, backgroundColor: C.bg1 },
-  navBtn: { flex: 1, alignItems: 'center', paddingTop: 10, paddingBottom: 12, gap: 4 },
+  navBtn: { flex: 1, alignItems: 'center', paddingTop: 8, gap: 3 },
+  navMark: { width: 18, height: 2, borderRadius: 1, backgroundColor: 'transparent', marginBottom: 4 },
   navText: { fontSize: 9, color: C.txt2, letterSpacing: 0.3 },
 });

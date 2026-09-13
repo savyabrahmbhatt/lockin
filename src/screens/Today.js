@@ -1,22 +1,31 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { C } from '../theme';
-import { Card, Label, Ticker, Bar } from '../components/ui';
+import { Card, Label, Ticker, Bar, Empty } from '../components/ui';
 import TaskRow from '../components/TaskRow';
 import Mic from '../components/Mic';
 import {
-  todayKey, catColor, normalizeWeek, normalizeTask, removeTask, moveTask, dayLoad, DAY_LABELS,
+  todayKey, catColor, normalizeWeek, normalizeTask, removeTask, moveTask, dayLoad,
+  DAY_LABELS, byTime, taskPhase,
 } from '../util';
 import { chat, extractPlan, stripPlan, splitTask } from '../ai';
 import { getApiKey } from '../storage';
+import { tap, bump, win, nope } from '../haptics';
 
 const greet = (h) => (h < 5 ? 'Still up.' : h < 12 ? 'Morning.' : h < 17 ? 'Afternoon.' : 'Evening.');
 
 export default function Today({ state, setState }) {
   const key = todayKey();
   const tasks = state.week[key] || [];
-  const now = new Date();
+
+  // Re-render each minute so "happening now" stays true without the user touching anything.
+  const [now, setNow] = useState(new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 60000);
+    return () => clearInterval(id);
+  }, []);
+  const nowMin = now.getHours() * 60 + now.getMinutes();
 
   const [adding, setAdding] = useState(false);
   const [title, setTitle] = useState('');
@@ -27,18 +36,20 @@ export default function Today({ state, setState }) {
   const [reply, setReply] = useState('');
   const [busy, setBusy] = useState(false);
 
+  // Sort for display only — the stored order stays as the coach wrote it.
+  const ordered = tasks.map((t, i) => ({ t, i })).sort((a, b) => byTime(a.t, b.t));
+
   const update = (i, task) =>
     setState({ ...state, week: { ...state.week, [key]: tasks.map((t, k) => (k === i ? task : t)) } });
   const remove = (i) => setState({ ...state, week: removeTask(state.week, key, i) });
   const move = (i, to) => setState({ ...state, week: moveTask(state.week, key, i, to) });
 
-  // Typed entry goes through the model exactly like a spoken one, so you get real steps
-  // instead of a bare line. Falls back to a plain task if the call fails.
   const add = async () => {
     const text = title.trim();
     if (!text || breaking) return;
+    bump();
     setBreaking(true);
-    setAddNote('Breaking it into steps…');
+    setAddNote('');
     let task;
     try {
       const apiKey = await getApiKey(state.settings.provider);
@@ -49,10 +60,11 @@ export default function Today({ state, setState }) {
         categories: state.categories.map((c) => c.name),
         day: DAY_LABELS[key],
       });
-      setAddNote('');
+      win();
     } catch (e) {
       task = { title: text, time: '', category: state.categories[0]?.name || 'Work', weight: 3, subs: [] };
-      setAddNote(e.message);
+      nope();
+      setAddNote('Added as-is — ' + e.message);
     }
     setState({ ...state, week: { ...state.week, [key]: [...tasks, normalizeTask(task)] } });
     setTitle('');
@@ -62,6 +74,7 @@ export default function Today({ state, setState }) {
 
   const askCoach = async () => {
     if (!coachText.trim() || busy) return;
+    bump();
     setBusy(true);
     setReply('');
     try {
@@ -84,8 +97,13 @@ export default function Today({ state, setState }) {
       });
       const plan = extractPlan(out);
       setReply(stripPlan(out));
-      if (plan) setState({ ...state, week: normalizeWeek(plan.week) });
+      if (plan) {
+        setState({ ...state, week: normalizeWeek(plan.week) });
+        setCoachText('');
+        win();
+      }
     } catch (e) {
+      nope();
       setReply(e.message);
     } finally {
       setBusy(false);
@@ -93,27 +111,40 @@ export default function Today({ state, setState }) {
   };
 
   const done = tasks.filter((t) => t.state === 'done').length;
-  const next = tasks.find((t) => (t.state || 'pending') === 'pending');
+  const left = tasks.filter((t) => (t.state || 'pending') === 'pending').length;
+  const next = ordered.map((x) => x.t).find((t) => (t.state || 'pending') === 'pending');
+  const load = dayLoad(tasks);
 
   return (
-    <ScrollView contentContainerStyle={styles.body}>
+    <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
       <Ticker />
       <View style={{ padding: 16 }}>
         <Label>{now.toDateString()}</Label>
         <Text style={styles.h1}>{greet(now.getHours())}</Text>
         <Text style={styles.sub}>
-          {tasks.length
-            ? `${tasks.length} blocks. ${done} done. The rest decide the quarter.`
-            : 'Nothing scheduled today. Tell the coach what changed and it will fill the day.'}
+          {!tasks.length
+            ? 'Nothing scheduled today.'
+            : left === 0
+            ? `All ${tasks.length} blocks closed out. That is a day you can't get back and didn't waste.`
+            : `${left} left of ${tasks.length}. ${done} done.`}
         </Text>
 
         {tasks.length ? (
           <Card style={{ marginTop: 14 }}>
             <View style={styles.loadHead}>
               <Label>Today's load</Label>
-              <Text style={styles.loadPct}>{dayLoad(tasks)}%</Text>
+              <Text style={styles.loadPct}>{load}%</Text>
             </View>
-            <Bar pct={dayLoad(tasks)} style={{ marginTop: 8 }} />
+            <Bar pct={load} style={{ marginTop: 8 }} />
+            <Text style={styles.note}>
+              {load > 100
+                ? 'Overloaded. Move something or today collapses on its own.'
+                : load >= 85
+                ? 'A full day. Protect the first block and the rest follows.'
+                : load >= 40
+                ? 'Manageable. No excuses hiding in this one.'
+                : 'A light day. Bank something extra or genuinely rest.'}
+            </Text>
           </Card>
         ) : null}
 
@@ -131,24 +162,38 @@ export default function Today({ state, setState }) {
           </Card>
         ) : null}
 
-        <Label style={{ marginTop: 22, marginBottom: 4 }}>The day — tap a task to open it</Label>
-        {tasks.map((t, i) => (
-          <TaskRow
-            key={i}
-            task={t}
-            day={key}
-            color={catColor(t.category, state.categories)}
-            categories={state.categories}
-            settings={state.settings}
-            onChange={(x) => update(i, x)}
-            onDelete={() => remove(i)}
-            onMove={(to) => move(i, to)}
+        {tasks.length ? (
+          <>
+            <View style={styles.listHead}>
+              <Label>The day</Label>
+              <Text style={styles.hintSmall}>Tap the circle: done → missed → clear</Text>
+            </View>
+            {ordered.map(({ t, i }) => (
+              <TaskRow
+                key={i}
+                task={t}
+                day={key}
+                phase={taskPhase(t, nowMin)}
+                color={catColor(t.category, state.categories)}
+                categories={state.categories}
+                settings={state.settings}
+                onChange={(x) => update(i, x)}
+                onDelete={() => remove(i)}
+                onMove={(to) => move(i, to)}
+              />
+            ))}
+          </>
+        ) : (
+          <Empty
+            icon="moon-outline"
+            title="Today is empty"
+            body="Add a block below, or tell the coach what changed and it will rebuild the week around it."
           />
-        ))}
+        )}
 
-        <TouchableOpacity style={styles.ghost} onPress={() => setAdding(!adding)}>
-          <Ionicons name="add" size={16} color={C.accent} />
-          <Text style={styles.ghostText}>Add something to today</Text>
+        <TouchableOpacity style={styles.ghost} onPress={() => { tap(); setAdding(!adding); }}>
+          <Ionicons name={adding ? 'close' : 'add'} size={16} color={C.accent} />
+          <Text style={styles.ghostText}>{adding ? 'Cancel' : 'Add something to today'}</Text>
         </TouchableOpacity>
 
         {adding ? (
@@ -160,26 +205,34 @@ export default function Today({ state, setState }) {
               placeholder="Leg day at the gym after work"
               placeholderTextColor={C.txt3}
               multiline
+              autoFocus
             />
-            <Text style={styles.hint}>
-              Say it however you like. The coach picks the time, the category and the actual steps.
+            <Text style={styles.note}>
+              Say it however it comes out. The coach picks the time, the category and the actual steps.
             </Text>
             <Mic style={{ marginTop: 8 }} label="Say it instead" onText={(t) => setTitle((v) => (v ? v + ' ' + t : t))} />
-            <TouchableOpacity style={styles.primary} onPress={add} disabled={breaking}>
-              {breaking ? <ActivityIndicator color="#0a0a0a" /> : <Text style={styles.primaryText}>Add and break it down</Text>}
+            <TouchableOpacity style={[styles.primary, !title.trim() && styles.dim]} onPress={add} disabled={breaking || !title.trim()}>
+              {breaking ? (
+                <View style={styles.busyRow}>
+                  <ActivityIndicator color="#0a0a0a" size="small" />
+                  <Text style={styles.primaryText}>Breaking it into steps…</Text>
+                </View>
+              ) : (
+                <Text style={styles.primaryText}>Add and break it down</Text>
+              )}
             </TouchableOpacity>
             {addNote ? <Text style={styles.reply}>{addNote}</Text> : null}
           </Card>
         ) : null}
 
-        <TouchableOpacity style={[styles.primary, { marginTop: 10 }]} onPress={() => setCoachOpen(!coachOpen)}>
+        <TouchableOpacity style={[styles.primary, { marginTop: 10 }]} onPress={() => { tap(); setCoachOpen(!coachOpen); }}>
           <Text style={styles.primaryText}>Something changed. Fix my day.</Text>
         </TouchableOpacity>
 
         {coachOpen ? (
           <Card style={{ marginTop: 8 }}>
             <TextInput
-              style={[styles.input, { height: 70, textAlignVertical: 'top' }]}
+              style={[styles.input, { height: 72, textAlignVertical: 'top' }]}
               value={coachText}
               onChangeText={setCoachText}
               multiline
@@ -187,8 +240,15 @@ export default function Today({ state, setState }) {
               placeholderTextColor={C.txt3}
             />
             <Mic style={{ marginTop: 8 }} label="Say it instead" onText={(t) => setCoachText((c) => (c ? c + ' ' + t : t))} />
-            <TouchableOpacity style={styles.primary} onPress={askCoach} disabled={busy}>
-              {busy ? <ActivityIndicator color="#0a0a0a" /> : <Text style={styles.primaryText}>Reschedule</Text>}
+            <TouchableOpacity style={[styles.primary, !coachText.trim() && styles.dim]} onPress={askCoach} disabled={busy || !coachText.trim()}>
+              {busy ? (
+                <View style={styles.busyRow}>
+                  <ActivityIndicator color="#0a0a0a" size="small" />
+                  <Text style={styles.primaryText}>Rebuilding the week…</Text>
+                </View>
+              ) : (
+                <Text style={styles.primaryText}>Reschedule</Text>
+              )}
             </TouchableOpacity>
             {reply ? <Text style={styles.reply}>{reply}</Text> : null}
           </Card>
@@ -200,25 +260,29 @@ export default function Today({ state, setState }) {
 
 const styles = StyleSheet.create({
   body: { paddingBottom: 40 },
-  h1: { fontSize: 22, fontWeight: '600', color: C.txt, letterSpacing: -0.4, marginTop: 6 },
-  sub: { fontSize: 12, color: C.txt2, marginTop: 4, lineHeight: 18 },
+  h1: { fontSize: 23, fontWeight: '600', color: C.txt, letterSpacing: -0.5, marginTop: 6 },
+  sub: { fontSize: 12.5, color: C.txt2, marginTop: 5, lineHeight: 19 },
   loadHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  loadPct: { fontSize: 12, color: C.txt2, fontWeight: '600' },
+  loadPct: { fontSize: 12, color: C.txt2, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  note: { fontSize: 11, color: C.txt3, marginTop: 8, lineHeight: 16 },
   stakeRow: { flexDirection: 'row', gap: 9, marginTop: 10 },
   stakeSplit: { marginTop: 11, paddingTop: 11, borderTopWidth: 0.5, borderTopColor: C.line },
   stakeUp: { flex: 1, fontSize: 12, lineHeight: 18, color: C.txt },
   stakeDown: { flex: 1, fontSize: 12, lineHeight: 18, color: C.txt2 },
+  listHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 24, marginBottom: 4 },
+  hintSmall: { fontSize: 10, color: C.txt3 },
   ghost: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, marginTop: 14,
-    borderWidth: 0.5, borderColor: C.line, borderRadius: 11, paddingVertical: 12,
+    borderWidth: 0.5, borderColor: C.line, borderRadius: 11, paddingVertical: 13,
   },
   ghostText: { color: C.txt, fontSize: 13 },
   input: {
-    backgroundColor: C.bg0, borderWidth: 0.5, borderColor: C.line, borderRadius: 8,
-    paddingHorizontal: 10, paddingVertical: 9, color: C.txt, fontSize: 12, minHeight: 40,
+    backgroundColor: C.bg0, borderWidth: 0.5, borderColor: C.line, borderRadius: 9,
+    paddingHorizontal: 11, paddingVertical: 10, color: C.txt, fontSize: 12.5, minHeight: 42,
   },
-  hint: { fontSize: 10.5, color: C.txt3, marginTop: 7, lineHeight: 15 },
-  primary: { backgroundColor: C.accent, borderRadius: 11, paddingVertical: 13, alignItems: 'center', marginTop: 9 },
+  primary: { backgroundColor: C.accent, borderRadius: 11, paddingVertical: 14, alignItems: 'center', marginTop: 9 },
+  dim: { opacity: 0.4 },
+  busyRow: { flexDirection: 'row', alignItems: 'center', gap: 9 },
   primaryText: { color: '#0a0a0a', fontWeight: '700', fontSize: 13 },
-  reply: { color: C.txt2, fontSize: 12, lineHeight: 18, marginTop: 10 },
+  reply: { color: C.txt2, fontSize: 12, lineHeight: 18, marginTop: 11 },
 });

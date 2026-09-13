@@ -2,7 +2,7 @@ import assert from 'node:assert';
 import { extractPlan, stripPlan, extractJSON, isReasoning, nowContext, defaultModel } from './src/ai.js';
 import {
   normalizeWeek, dayLoad, dayWeight, completion, catColor, parseHM, weekdayFor, WEEK_ORDER,
-  removeTask, moveTask, weekStats,
+  removeTask, moveTask, weekStats, byTime, taskPhase, subProgress,
 } from './src/util.js';
 
 const reply = `Here is the load: 340 hours over 16 weeks.
@@ -90,5 +90,21 @@ const ctx = nowContext(new Date(2026, 8, 13, 14, 5));
 assert.ok(ctx.includes('Sunday 13 September 2026'), ctx);
 assert.ok(ctx.includes('14:05'), 'zero-padded 24h time');
 assert.ok(ctx.includes('Monday to Sunday'));
+
+// display ordering: timed blocks in clock order, untimed sink to the bottom
+const rows = [{ time: '' }, { time: '18:00 - 19:00' }, { time: '06:30 - 07:30' }];
+assert.deepEqual([...rows].sort(byTime).map((r) => r.time), ['06:30 - 07:30', '18:00 - 19:00', '']);
+
+// "happening now" highlight
+const block = { time: '09:00 - 10:30' };
+assert.equal(taskPhase(block, 9 * 60 + 30), 'now');
+assert.equal(taskPhase(block, 10 * 60 + 30), 'past', 'the end minute is already over');
+assert.equal(taskPhase(block, 8 * 60 + 45), 'soon');
+assert.equal(taskPhase(block, 6 * 60), 'later');
+assert.equal(taskPhase({ time: '' }, 600), 'untimed');
+assert.equal(taskPhase({ time: '09:00' }, 9 * 60 + 59), 'now', 'no end time means assume an hour');
+
+assert.deepEqual(subProgress({ subs: [{ done: true }, { done: false }] }), { done: 1, total: 2 });
+assert.deepEqual(subProgress({}), { done: 0, total: 0 });
 
 console.log('selfcheck ok');
