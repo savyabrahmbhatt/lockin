@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-nati
 import { C } from '../theme';
 import { Card, Label, Bar } from '../components/ui';
 import TaskRow from '../components/TaskRow';
-import { WEEK_ORDER, DAY_LABELS, todayKey, dayLoad, catColor } from '../util';
+import { WEEK_ORDER, DAY_LABELS, todayKey, dayLoad, dayWeight, catColor, removeTask, moveTask } from '../util';
 
 export default function Plan({ state, setState }) {
   const [day, setDay] = useState(todayKey());
@@ -11,6 +11,8 @@ export default function Plan({ state, setState }) {
 
   const update = (i, task) =>
     setState({ ...state, week: { ...state.week, [day]: tasks.map((t, k) => (k === i ? task : t)) } });
+  const remove = (i) => setState({ ...state, week: removeTask(state.week, day, i) });
+  const move = (i, to) => setState({ ...state, week: moveTask(state.week, day, i, to) });
 
   return (
     <ScrollView contentContainerStyle={styles.body}>
@@ -34,7 +36,7 @@ export default function Plan({ state, setState }) {
             <View key={d} style={{ marginTop: 11 }}>
               <View style={styles.loadHead}>
                 <Text style={styles.loadDay}>{DAY_LABELS[d]}</Text>
-                <Text style={styles.loadPct}>{load}% load</Text>
+                <Text style={styles.loadPct}>{load}% · weight {dayWeight(state.week[d])}</Text>
               </View>
               <Bar pct={load} style={{ marginTop: 6 }} />
               <Text style={styles.loadMeta}>
@@ -48,7 +50,17 @@ export default function Plan({ state, setState }) {
 
       <Label style={{ marginTop: 22, marginBottom: 4 }}>{DAY_LABELS[day]}</Label>
       {tasks.map((t, i) => (
-        <TaskRow key={i} task={t} color={catColor(t.category, state.categories)} onChange={(x) => update(i, x)} settings={state.settings} />
+        <TaskRow
+          key={i}
+          task={t}
+          day={day}
+          color={catColor(t.category, state.categories)}
+          categories={state.categories}
+          settings={state.settings}
+          onChange={(x) => update(i, x)}
+          onDelete={() => remove(i)}
+          onMove={(to) => move(i, to)}
+        />
       ))}
     </ScrollView>
   );

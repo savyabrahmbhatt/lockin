@@ -37,14 +37,31 @@ replies with just the patched task JSON.
 
 ## Notifications
 
-Each task with a time in it gets a weekly local reminder at that time, titled with the task and
-bodied with its `impact_miss` line. Rescheduling the week reschedules the notifications.
+Each task with a time in it gets a weekly local reminder at that time, then two follow-ups at
++25 and +90 minutes if it still isn't marked done — the first asks whether you started, the
+second quotes what skipping costs. Marking it done cancels the nags. Rescheduling the week
+reschedules everything.
+
+## Weight, not task count
+
+Every task carries a weight of 1–5 (trivial → draining). A day is full at total weight 12, and
+the planner is told to keep every day between 6 and 12 and to leave one day under 5. That is what
+stops the model dumping the whole backlog on Monday. You can re-weight any task by hand in its
+detail panel, along with changing its category, moving it to another day, or deleting it.
 
 ## AI provider
 
-Profile tab: pick Claude, OpenAI or Gemini, paste your own API key, optionally override the
-model. The key is stored in the device keystore (`expo-secure-store`) and is sent only to
-that provider. You pay your own usage.
+First run asks for this before anything else: pick Claude, OpenAI or Gemini, then pick
+**Quick / Balanced / Smartest** — no model IDs to decode — and paste a key. There's a direct
+link to each provider's key page. The key lives in the device keystore (`expo-secure-store`)
+and is sent only to that provider. You pay your own usage.
+
+The Smartest options are reasoning models, which need different request fields than normal
+ones (`max_completion_tokens`, the `developer` role, a much larger token ceiling to cover the
+thinking). `isReasoning()` in `src/ai.js` handles that, including for models typed in by hand.
+
+Every request carries the current date, weekday and clock time, so the coach never schedules
+a block into a time that already passed and counts real days to your deadlines.
 
 ## Layout
 

@@ -14,7 +14,11 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.savya.lockin"
+      "bundleIdentifier": "com.savya.lockin",
+      "infoPlist": {
+        "NSSpeechRecognitionUsageDescription": "Lock In turns what you say into plan edits.",
+        "NSMicrophoneUsageDescription": "Lock In listens so you can change your plan by talking."
+      }
     },
     "android": {
       "package": "com.savya.lockin",
@@ -23,7 +27,10 @@
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
-      }
+      },
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -36,9 +43,16 @@
         {
           "microphonePermission": "Lock In listens so you can change your plan by talking.",
           "speechRecognitionPermission": "Lock In turns what you say into plan edits.",
-          "androidSpeechServicePackages": ["com.google.android.googlequicksearchbox"]
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox"
+          ]
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "fa306597-ecba-4c09-8ec8-921b747b30a1"
+      }
+    }
   }
 }

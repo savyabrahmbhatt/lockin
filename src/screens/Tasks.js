@@ -3,7 +3,7 @@ import { Text, ScrollView, StyleSheet } from 'react-native';
 import { C } from '../theme';
 import { Label } from '../components/ui';
 import TaskRow from '../components/TaskRow';
-import { WEEK_ORDER, catColor } from '../util';
+import { WEEK_ORDER, DAY_LABELS, catColor, removeTask, moveTask } from '../util';
 
 export default function Tasks({ state, setState }) {
   const all = WEEK_ORDER.flatMap((d) => (state.week[d] || []).map((t, i) => ({ t, d, i })));
@@ -15,6 +15,8 @@ export default function Tasks({ state, setState }) {
 
   const update = (d, i, task) =>
     setState({ ...state, week: { ...state.week, [d]: state.week[d].map((t, k) => (k === i ? task : t)) } });
+  const remove = (d, i) => setState({ ...state, week: removeTask(state.week, d, i) });
+  const move = (d, i, to) => setState({ ...state, week: moveTask(state.week, d, i, to) });
 
   return (
     <ScrollView contentContainerStyle={styles.body}>
@@ -28,9 +30,14 @@ export default function Tasks({ state, setState }) {
             <TaskRow
               key={x.d + x.i}
               task={x.t}
+              badge={DAY_LABELS[x.d].slice(0, 3)}
+              day={x.d}
               color={catColor(x.t.category, state.categories)}
-              onChange={(task) => update(x.d, x.i, task)}
+              categories={state.categories}
               settings={state.settings}
+              onChange={(task) => update(x.d, x.i, task)}
+              onDelete={() => remove(x.d, x.i)}
+              onMove={(to) => move(x.d, x.i, to)}
             />
           ))}
         </React.Fragment>

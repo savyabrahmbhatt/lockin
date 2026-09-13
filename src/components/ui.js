@@ -1,8 +1,6 @@
-import React, { useEffect, useRef } from 'react';
-import { Animated, Easing, Text, View, StyleSheet, Dimensions } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Animated, Easing, Text, View, StyleSheet } from 'react-native';
 import { C, MANTRA } from '../theme';
-
-const W = Dimensions.get('window').width;
 
 export function Label({ children, style }) {
   return <Text style={[styles.label, style]}>{children}</Text>;
@@ -27,24 +25,34 @@ export function Bar({ pct, style }) {
   );
 }
 
+// ponytail: the loop distance has to be the measured width of one copy, not a guess.
+// Guessing is what made it jump and cut words mid-letter. Two copies, slide exactly one.
 export function Ticker() {
   const x = useRef(new Animated.Value(0)).current;
+  const [w, setW] = useState(0);
+
   useEffect(() => {
-    Animated.loop(
-      Animated.timing(x, { toValue: 1, duration: 22000, easing: Easing.linear, useNativeDriver: true })
-    ).start();
-  }, [x]);
-  const text = MANTRA + MANTRA;
+    if (!w) return;
+    x.setValue(0);
+    const anim = Animated.loop(
+      Animated.timing(x, {
+        toValue: -w,
+        duration: (w / 40) * 1000,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [w, x]);
+
   return (
     <View style={styles.ticker}>
-      <Animated.View
-        style={{
-          flexDirection: 'row',
-          transform: [{ translateX: x.interpolate({ inputRange: [0, 1], outputRange: [0, -W * 2.4] }) }],
-        }}
-      >
-        <Text style={styles.tickerText} numberOfLines={1}>{text}</Text>
-        <Text style={styles.tickerText} numberOfLines={1}>{text}</Text>
+      <Animated.View style={{ flexDirection: 'row', transform: [{ translateX: x }] }}>
+        <Text style={styles.tickerText} numberOfLines={1} onLayout={(e) => setW(e.nativeEvent.layout.width)}>
+          {MANTRA}
+        </Text>
+        <Text style={styles.tickerText} numberOfLines={1}>{MANTRA}</Text>
       </Animated.View>
     </View>
   );

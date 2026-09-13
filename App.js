@@ -1,16 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, StatusBar, Platform } from 'react-native';
+import {
+  View, Text, TouchableOpacity, StyleSheet, SafeAreaView, StatusBar, Platform, KeyboardAvoidingView,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { C } from './src/theme';
-import { Ticker } from './src/components/ui';
 import Background from './src/components/Background';
+import Setup from './src/screens/Setup';
 import Onboarding from './src/screens/Onboarding';
 import Today from './src/screens/Today';
 import Plan from './src/screens/Plan';
 import Tasks from './src/screens/Tasks';
 import Progress from './src/screens/Progress';
 import Profile from './src/screens/Profile';
-import { loadState, saveState, EMPTY } from './src/storage';
+import { loadState, saveState, EMPTY, getApiKey } from './src/storage';
 import { normalizeWeek } from './src/util';
 import { syncReminders } from './src/notify';
 
@@ -25,11 +27,13 @@ const TABS = [
 export default function App() {
   const [state, setState] = useState(EMPTY);
   const [ready, setReady] = useState(false);
+  const [hasKey, setHasKey] = useState(false);
   const [tab, setTab] = useState('today');
 
   useEffect(() => {
-    loadState().then((s) => {
+    loadState().then(async (s) => {
       setState(s);
+      setHasKey(!!(await getApiKey(s.settings.provider)));
       setReady(true);
     });
   }, []);
@@ -38,9 +42,10 @@ export default function App() {
     if (ready) saveState(state);
   }, [state, ready]);
 
-  // ponytail: reschedule only when the shape of the week changes, not on every checkbox tap.
+  // Re-sync when times, titles or done-state change — done-state matters because a
+  // finished task must stop nagging. Sub-task ticks and category edits don't trigger it.
   const weekSig = JSON.stringify(
-    Object.entries(state.week).map(([d, ts]) => [d, (ts || []).map((t) => t.time + t.title)])
+    Object.entries(state.week).map(([d, ts]) => [d, (ts || []).map((t) => t.time + t.title + t.state)])
   );
   useEffect(() => {
     if (ready && state.onboarded) syncReminders(state.week);
@@ -51,7 +56,10 @@ export default function App() {
 
   if (!ready) return <View style={styles.root} />;
 
-  const screen = !state.onboarded ? (
+  const setup = !hasKey;
+  const screen = setup ? (
+    <Setup state={state} setState={setState} onDone={() => setHasKey(true)} />
+  ) : !state.onboarded ? (
     <Onboarding settings={state.settings} onPlan={onPlan} />
   ) : tab === 'today' ? (
     <Today state={state} setState={setState} />
@@ -62,29 +70,30 @@ export default function App() {
   ) : tab === 'progress' ? (
     <Progress state={state} />
   ) : (
-    <Profile state={state} setState={setState} />
+    <Profile state={state} setState={setState} onKeyCleared={() => setHasKey(false)} />
   );
 
   return (
     <SafeAreaView style={styles.root}>
       <StatusBar barStyle="light-content" backgroundColor={C.bg1} />
       <Background />
-      <Ticker />
-      <View style={{ flex: 1 }}>{screen}</View>
-      {state.onboarded ? (
-        <View style={styles.nav}>
-          {TABS.map((t) => (
-            <TouchableOpacity key={t.key} style={styles.navBtn} onPress={() => setTab(t.key)}>
-              <Ionicons name={t.icon} size={20} color={tab === t.key ? C.accent : C.txt2} />
-              <Text style={[styles.navText, tab === t.key && { color: C.accent }]}>{t.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      ) : (
-        <TouchableOpacity style={styles.skip} onPress={() => setState({ ...state, onboarded: true })}>
-          <Text style={styles.skipText}>Skip setup for now</Text>
-        </TouchableOpacity>
-      )}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'android' ? StatusBar.currentHeight || 0 : 0}
+      >
+        <View style={{ flex: 1 }}>{screen}</View>
+        {state.onboarded && !setup ? (
+          <View style={styles.nav}>
+            {TABS.map((t) => (
+              <TouchableOpacity key={t.key} style={styles.navBtn} onPress={() => setTab(t.key)}>
+                <Ionicons name={t.icon} size={20} color={tab === t.key ? C.accent : C.txt2} />
+                <Text style={[styles.navText, tab === t.key && { color: C.accent }]}>{t.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        ) : null}
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -94,6 +103,4 @@ const styles = StyleSheet.create({
   nav: { flexDirection: 'row', borderTopWidth: 0.5, borderTopColor: C.line, backgroundColor: C.bg1 },
   navBtn: { flex: 1, alignItems: 'center', paddingTop: 10, paddingBottom: 12, gap: 4 },
   navText: { fontSize: 9, color: C.txt2, letterSpacing: 0.3 },
-  skip: { alignItems: 'center', paddingVertical: 12, borderTopWidth: 0.5, borderTopColor: C.line, backgroundColor: C.bg1 },
-  skipText: { color: C.txt3, fontSize: 12 },
 });

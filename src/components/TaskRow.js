@@ -1,16 +1,17 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ActivityIndicator, Alert, ScrollView, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { C } from '../theme';
 import { Label } from './ui';
 import Mic from './Mic';
 import { editTask } from '../ai';
 import { getApiKey } from '../storage';
-import { normalizeTask } from '../util';
+import { normalizeTask, WEEK_ORDER, DAY_LABELS, taskWeight } from '../util';
 
 const NEXT = { pending: 'done', done: 'missed', missed: 'pending' };
+const WEIGHT_LABEL = { 1: 'Trivial', 2: 'Light', 3: 'Real work', 4: 'Heavy', 5: 'Draining' };
 
-export default function TaskRow({ task, color, onChange, settings }) {
+export default function TaskRow({ task, color, onChange, settings, categories = [], onDelete, onMove, day, badge }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [heard, setHeard] = useState('');
@@ -61,7 +62,9 @@ export default function TaskRow({ task, color, onChange, settings }) {
         <TouchableOpacity style={{ flex: 1 }} onPress={() => setOpen(!open)}>
           <Text style={styles.title}>{task.title}</Text>
           <Text style={styles.meta}>
-            {[task.time, task.category, subs.length ? subs.length + ' steps' : null].filter(Boolean).join('  •  ')}
+            {[badge, task.time, task.category, WEIGHT_LABEL[taskWeight(task)], subs.length ? subs.length + ' steps' : null]
+              .filter(Boolean)
+              .join('  •  ')}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity onPress={() => setOpen(!open)} hitSlop={10}>
@@ -96,6 +99,54 @@ export default function TaskRow({ task, color, onChange, settings }) {
             </TouchableOpacity>
           </View>
 
+          {categories.length ? (
+            <View style={styles.block}>
+              <Label>Category</Label>
+              <View style={styles.chips}>
+                {categories.map((c) => (
+                  <TouchableOpacity
+                    key={c.name}
+                    onPress={() => onChange({ ...task, category: c.name })}
+                    style={[styles.chip, task.category === c.name && { borderColor: c.color, backgroundColor: 'rgba(255,255,255,0.06)' }]}
+                  >
+                    <View style={[styles.chipDot, { backgroundColor: c.color }]} />
+                    <Text style={styles.chipText}>{c.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          ) : null}
+
+          <View style={styles.block}>
+            <Label>Effort</Label>
+            <View style={styles.chips}>
+              {[1, 2, 3, 4, 5].map((w) => (
+                <TouchableOpacity
+                  key={w}
+                  onPress={() => onChange({ ...task, weight: w })}
+                  style={[styles.chip, taskWeight(task) === w && styles.chipOn]}
+                >
+                  <Text style={[styles.chipText, taskWeight(task) === w && { color: '#0a0a0a', fontWeight: '700' }]}>
+                    {WEIGHT_LABEL[w]}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {onMove ? (
+            <View style={styles.block}>
+              <Label>Move to</Label>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 5 }}>
+                {WEEK_ORDER.filter((d) => d !== day).map((d) => (
+                  <TouchableOpacity key={d} onPress={() => onMove(d)} style={styles.chip}>
+                    <Text style={styles.chipText}>{DAY_LABELS[d].slice(0, 3)}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          ) : null}
+
           {settings ? (
             <View style={styles.voice}>
               {busy ? (
@@ -111,6 +162,21 @@ export default function TaskRow({ task, color, onChange, settings }) {
                 "Swap bench for incline press" · "Move it to 6 am" · "Add 20 minutes of stretching"
               </Text>
             </View>
+          ) : null}
+
+          {onDelete ? (
+            <TouchableOpacity
+              style={styles.delete}
+              onPress={() =>
+                Alert.alert('Delete this task?', task.title, [
+                  { text: 'Keep it', style: 'cancel' },
+                  { text: 'Delete', style: 'destructive', onPress: onDelete },
+                ])
+              }
+            >
+              <Ionicons name="trash-outline" size={14} color={C.miss} />
+              <Text style={styles.deleteText}>Delete task</Text>
+            </TouchableOpacity>
           ) : null}
         </View>
       ) : null}
@@ -155,6 +221,17 @@ const styles = StyleSheet.create({
   },
   addBtn: { backgroundColor: C.accent, borderRadius: 8, paddingHorizontal: 13, justifyContent: 'center' },
   addBtnText: { color: '#0a0a0a', fontWeight: '700', fontSize: 12 },
+  block: { marginTop: 12, paddingTop: 12, borderTopWidth: 0.5, borderTopColor: C.line, gap: 8 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 5 },
+  chip: {
+    flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 7,
+    borderRadius: 999, borderWidth: 0.5, borderColor: C.line, backgroundColor: C.bg2,
+  },
+  chipOn: { backgroundColor: C.accent, borderColor: C.accent },
+  chipDot: { width: 6, height: 6, borderRadius: 3 },
+  chipText: { color: C.txt, fontSize: 11 },
+  delete: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, marginTop: 12, paddingVertical: 9 },
+  deleteText: { color: C.miss, fontSize: 12, fontWeight: '600' },
   voice: { marginTop: 12, paddingTop: 12, borderTopWidth: 0.5, borderTopColor: C.line, gap: 8 },
   busy: { flexDirection: 'row', alignItems: 'center', gap: 9 },
   heard: { flex: 1, color: C.txt2, fontSize: 11.5, lineHeight: 17 },
