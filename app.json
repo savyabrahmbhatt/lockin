@@ -1,17 +1,25 @@
 {
   "expo": {
-    "name": "lockin",
+    "name": "Lock In",
     "slug": "lockin",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#08080a",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#08080a"
+    },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.savya.lockin"
     },
     "android": {
+      "package": "com.savya.lockin",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#08080a",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -19,6 +27,18 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-secure-store",
+      "expo-notifications",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Lock In listens so you can change your plan by talking.",
+          "speechRecognitionPermission": "Lock In turns what you say into plan edits.",
+          "androidSpeechServicePackages": ["com.google.android.googlequicksearchbox"]
+        }
+      ]
+    ]
   }
 }
