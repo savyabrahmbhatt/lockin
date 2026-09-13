@@ -4,7 +4,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { C } from './src/theme';
+import { C, CAT_COLORS } from './src/theme';
 import { tap } from './src/haptics';
 import Background from './src/components/Background';
 import Setup from './src/screens/Setup';
@@ -15,7 +15,7 @@ import Tasks from './src/screens/Tasks';
 import Progress from './src/screens/Progress';
 import Profile from './src/screens/Profile';
 import { loadState, saveState, EMPTY, getApiKey } from './src/storage';
-import { normalizeWeek } from './src/util';
+import { normalizeWeek, addCategories } from './src/util';
 import { syncReminders } from './src/notify';
 
 const TABS = [
@@ -63,7 +63,15 @@ function Shell() {
   }, [weekSig, ready, state.onboarded]);
 
   const onPlan = (plan) =>
-    setState((s) => ({ ...s, onboarded: true, goals: plan.goals || [], week: normalizeWeek(plan.week) }));
+    setState((s) => ({
+      ...s,
+      onboarded: true,
+      goals: plan.goals || [],
+      brief: plan.brief || '',
+      weekNumber: 1,
+      categories: addCategories(s.categories, plan.categories || [], CAT_COLORS),
+      week: normalizeWeek(plan.week),
+    }));
 
   if (!ready) return <View style={styles.root} />;
 

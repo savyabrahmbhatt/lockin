@@ -8,6 +8,8 @@ export const EMPTY = {
   onboarded: false,
   goals: [],
   week: {},
+  brief: '',
+  weekNumber: 1,
   categories: DEFAULT_CATEGORIES,
   settings: { provider: 'anthropic', model: '' },
 };

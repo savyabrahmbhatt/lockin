@@ -1,3 +1,5 @@
+import { WEEK_ORDER, DAY_LABELS, compactWeek } from './util.js';
+
 export const PROVIDERS = {
   anthropic: {
     label: 'Claude',
@@ -88,43 +90,136 @@ const PLAN_RULES = `Rules you must not break:
 8. Use only the user's categories. If something genuinely fits none, say so in prose and
    suggest a category name rather than inventing one silently.`;
 
+// ponytail: the interview NEVER writes the plan. It writes a dossier. The week is then
+// built in two later stages (skeleton, then one call per day) so no single call has to
+// hold a whole detailed week in its head - that is what made small models dump
+// everything on Monday with no steps.
 export const SYSTEM = `You are the coach inside Lock In, a life-operating-system app.
-You are not a chatbot. You are the person who builds and defends someone's week.
+You are not a chatbot. You are the person who interrogates someone before building
+the week they will actually live.
 
-PHASE 1 - INTERVIEW.
-The user talks in plain language. Ask ONE short question at a time. Never show forms,
-never show numbered option lists, never ask two things in one message. Maximum 7 questions.
-Keep every question under 25 words.
+YOUR ONLY JOB RIGHT NOW IS TO INVESTIGATE. Do not write a plan. Do not list tasks.
+Do not output a schedule. Someone else builds the plan from your dossier.
 
-Before you can plan you must know:
-- every goal, in the user's own words, and the deadline or target date for each
-- where they are starting from right now, in numbers where numbers exist
-- their fixed commitments: work or study hours, sleep, commute, family duties
-- when in the day they actually have energy, and when they are useless
-- how many days a week they can realistically show up, honestly, not aspirationally
-- their non-negotiables, and which goal they sacrifice first on a bad week
+HOW YOU ASK.
+One short question at a time. Under 25 words. No forms, no numbered menus, never two
+questions in one message. Ask up to 14 questions - more if the user is still vague,
+fewer if they hand you a detailed brief up front.
 
-If an answer is vague, ask one follow-up to make it concrete. Do not accept "get fit"
-or "learn coding" as a goal - push until there is a number and a date.
+IF THE USER PASTES A LONG PLAN OR SPEC:
+Do not accept it and move on. Read it, then ask only about what it does NOT say.
+A long document always leaves holes. Name the hole in the question.
 
-PHASE 2 - PLAN.
-When you know enough, write two or three sentences naming the total weekly hours they
-just signed up for and the single hardest trade-off in the plan. Then output ONE json
-object inside a \`\`\`json fence and nothing after it:
+WHAT YOU MUST KNOW BEFORE YOU STOP. Never skip a line here just because the user
+sounds confident. If it is missing, ask.
+
+1. GOALS. Every goal in their words, each with a deadline and a number. "Get fit" and
+   "learn system design" are not goals. Push until there is a start value and a target.
+2. BASELINE. Where they are today in numbers: weight, current lifts or fitness level,
+   current salary, current skill level, current hours slept, current habits.
+3. FIXED LIFE. Exact work or study hours, days of the week, commute, sleep and wake
+   times, family duties, anything immovable. Ask for clock times, not "mornings".
+4. WORK ITSELF. Their job is part of the week, not a hole in it. Ask what actually
+   happens in their working day and whether they want work blocks in the plan.
+5. INTENSITY. Directly ask how hard they want this. Gentle and sustainable, or brutal?
+   For training: how many days, how long per session, how close to failure. For study:
+   deep multi-hour blocks or short daily reps. Their answer changes every block you
+   commission - never guess it.
+6. EQUIPMENT AND RESOURCES. Gym or home, what machines, what instrument, which book or
+   course, which tools. You cannot prescribe a lat pulldown to someone with dumbbells.
+7. EXPERIENCE. Beginner, returning after a break, or advanced - per area. This sets
+   volume, weight and difficulty.
+8. HARD LIMITS. Injuries, health conditions, dietary rules, allergies, medication,
+   anything that makes a normal prescription wrong or dangerous.
+9. HONEST CAPACITY. How many days a week they will really show up. Then ask what they
+   drop first on a bad week.
+10. PROGRESSION. Whether this is one week or a longer programme, and if longer, what
+    the first week specifically has to achieve.
+
+If two facts they gave you contradict each other, say so and make them pick.
+
+WHEN YOU ARE DONE.
+Write two or three sentences naming the weekly hours they just committed to and the
+single hardest trade-off ahead. Then output ONE json object inside a \`\`\`json fence
+and nothing after it:
 
 {"goals":[{"title":"","deadline":"","metric":"start -> target"}],
- "week":{"mon":[task],"tue":[],"wed":[],"thu":[],"fri":[],"sat":[],"sun":[]}}
+ "categories":["Work","Health","Career","Personal"],
+ "brief":"..."}
 
-${TASK_SHAPE}
+categories: 3 to 6 major areas that cover every goal AND their day job. These become
+the app's categories, so name them for this person, not generically.
+
+brief: a dense dossier written for another coach who will never speak to this user.
+Third person, plain sentences, no markdown, no bullets. 200-400 words. It MUST carry:
+exact clock times of work and sleep, intensity level per area, equipment and resources
+by name, experience level per area, injuries and limits, days available, the
+non-negotiables, what gets dropped first, the specific programme structure they agreed
+to, and what week one in particular must deliver. Anything missing from the brief will
+be invented later, badly. Write it as if the next coach is blind.`;
+
+const SKELETON_SYSTEM = `You lay out the SHAPE of one week. Titles, times, categories and
+weights only. Someone else writes the steps inside each block - do not write them.
+
+Reply with ONLY raw JSON, no fence, no prose:
+{"week":{"mon":[{"title":"","time":"07:30 - 08:45","category":"","weight":3}],
+ "tue":[],"wed":[],"thu":[],"fri":[],"sat":[],"sun":[]}}
 
 ${PLAN_RULES}
 
-PHASE 3 - LIVING PLAN.
-After the plan exists the user will tell you what changed: illness, travel, a bad day, a
-new deadline. Reschedule around it and return the same json shape. Protect the deadlines
-first, the recovery day second. Say in one or two sentences what you moved and what it
-cost them. Never silently drop work - if something genuinely will not fit, say which goal
-slips and by how long.`;
+Additional rules for the shape:
+- The user's JOB IS IN THE WEEK. Put their actual working hours in as blocks on their
+  working days, in their work category, weighted for how draining that job is. A plan
+  that pretends the job does not exist is useless.
+- Fixed daily anchors the brief names - sleep, meals, commute, skincare, wind-down -
+  appear as real blocks too if they are things the user must remember to do.
+- Build ONLY the week you are asked for. If this is week 1 of a longer programme, week 1
+  is a re-entry week: lower volume, habits first. Do not plan weeks 2 onward.
+- Every category you were given must appear at least twice in the week.
+- Count the blocks per day before you answer. Between 4 and 9 blocks per day, total
+  weight 6 to 12. If a day breaks that, move a block to a lighter day and re-count.`;
+
+const DETAIL_SYSTEM = `You write the inside of ONE day's blocks. The shape is already
+decided - do not change any title, time, category or weight. Do not add or remove blocks.
+
+Reply with ONLY raw JSON, no fence, no prose:
+{"tasks":[${TASK_SHAPE.replace('task = ', '')}]}
+
+Return the SAME number of tasks in the SAME order you were given.
+
+For each block write 3 to 6 steps that a person could follow without thinking. Use the
+brief: the equipment they actually have, their experience level, their stated intensity,
+their injuries, their named book or course. Be specific to the point of being boring:
+- Training: exercise, sets x reps, and load or RPE. "Lat pulldown 3x10, 2 reps in reserve".
+- Study: the actual chapter, topic or problem. "Alex Xu ch.4 rate limiting - draw it closed book".
+- Meals: the actual food and the protein number. "4 eggs + 250g curd, 38g protein".
+- Work: the actual deliverables or meeting types they described.
+- Practice: the specific drill, song or scale, progressing from the previous session.
+Never write "plan it", "get started", "focus", "do your best" or any other filler step.
+
+impact_done and impact_miss are concrete, personal and in units - kilos, hours, days of
+deadline, money, the exact thing the brief says they want. Blunt, never shaming.`;
+
+const COMMAND_SYSTEM = `You edit an existing week from one instruction. The instruction may
+name any day or several days, and may add, delete, move, reschedule or rewrite blocks.
+
+You are given the whole week in compact form and the user's instruction.
+
+Reply with ONLY raw JSON, no fence, no prose:
+{"note":"one sentence on what you changed and what it costs","days":{"tue":[task,...]}}
+
+${TASK_SHAPE}
+
+Rules:
+- Put in "days" ONLY the days you actually changed. Untouched days must not appear.
+- For each changed day, return the COMPLETE list of blocks that day should end with,
+  in full task form, including the blocks you are keeping unchanged.
+- To delete a block, return the day without it. To move a block, return BOTH days:
+  the source without it and the target with it.
+- New or rewritten blocks get 3 to 6 real, specific steps - never filler.
+- Keep every day's total weight between 6 and 12 and never overlap two blocks in time.
+- If the instruction is ambiguous about which day, pick the most likely one and say which
+  one you picked in "note".`;
 
 export function extractJSON(text) {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
@@ -149,6 +244,93 @@ export function extractPlan(text) {
 
 export function stripPlan(text) {
   return text.replace(/```json[\s\S]*?```/, '').trim();
+}
+
+// The interview now ends with a dossier, not a week.
+export function extractBrief(text) {
+  const parsed = extractJSON(text);
+  return parsed && parsed.brief ? parsed : null;
+}
+
+// ponytail: two stages. Stage 1 decides the shape of the week only (small output, so the
+// balancing rules actually get obeyed). Stage 2 fires one call PER DAY in parallel to fill
+// in the steps. Seven small calls beat one huge one on every model, and a day that fails
+// degrades to its skeleton instead of taking the whole plan down.
+export async function buildWeek({
+  provider, model, apiKey, brief, goals = [], categories = [], weekNumber = 1, previous = '', onStage,
+}) {
+  onStage?.('shape');
+  const reply = await chat({
+    provider, model, apiKey,
+    system: SKELETON_SYSTEM,
+    maxTokens: 3000,
+    messages: [
+      {
+        role: 'user',
+        content:
+          `Build the shape of WEEK ${weekNumber}.\n\nCategories: ${categories.join(', ')}\n` +
+          `Goals: ${goals.map((g) => `${g.title} (${g.deadline || 'no date'}, ${g.metric || ''})`).join(' | ')}\n` +
+          (previous ? `\nHow last week actually went: ${previous}\n` : '') +
+          `\nDossier:\n${brief}`,
+      },
+    ],
+  });
+  const skeleton = extractJSON(reply);
+  if (!skeleton?.week) throw new Error('Could not lay out the week. Try the Balanced or Smartest model.');
+
+  onStage?.('detail');
+  const filled = await Promise.all(
+    WEEK_ORDER.map((d) => detailDay({ provider, model, apiKey, brief, day: d, tasks: skeleton.week[d] || [] }))
+  );
+  const week = {};
+  WEEK_ORDER.forEach((d, i) => {
+    week[d] = filled[i];
+  });
+  return week;
+}
+
+async function detailDay({ provider, model, apiKey, brief, day, tasks }) {
+  if (!tasks.length) return [];
+  try {
+    const reply = await chat({
+      provider, model, apiKey,
+      system: DETAIL_SYSTEM,
+      maxTokens: 3000,
+      messages: [
+        {
+          role: 'user',
+          content: `Day: ${DAY_LABELS[day]}\n\nBlocks:\n${JSON.stringify(tasks)}\n\nDossier:\n${brief}`,
+        },
+      ],
+    });
+    const out = extractJSON(reply);
+    const list = out?.tasks;
+    if (!Array.isArray(list) || list.length !== tasks.length) return tasks;
+    // The shape is ours, not the model's - it only gets to fill in the inside.
+    return list.map((t, i) => ({ ...t, ...tasks[i], subs: t.subs || [] }));
+  } catch {
+    return tasks;
+  }
+}
+
+export async function commandWeek({ provider, model, apiKey, week, instruction, categories = [], brief = '' }) {
+  const reply = await chat({
+    provider, model, apiKey,
+    system: COMMAND_SYSTEM,
+    maxTokens: 3000,
+    messages: [
+      {
+        role: 'user',
+        content:
+          `Categories: ${categories.join(', ')}\n` +
+          (brief ? `Dossier: ${brief}\n` : '') +
+          `\nCurrent week:\n${JSON.stringify(compactWeek(week))}\n\nInstruction: ${instruction}`,
+      },
+    ],
+  });
+  const out = extractJSON(reply);
+  if (!out?.days) throw new Error("Didn't catch that. Name the day and what to change.");
+  return { days: out.days, note: out.note || '' };
 }
 
 // ponytail: the point of these two prompts is that they are short. A spoken or typed

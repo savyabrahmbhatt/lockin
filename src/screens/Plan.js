@@ -1,17 +1,21 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, StyleSheet } from 'react-native';
 import { C } from '../theme';
 import { Card, Label, Bar, Empty } from '../components/ui';
 import TaskRow from '../components/TaskRow';
 import {
   WEEK_ORDER, DAY_LABELS, todayKey, dayLoad, dayWeight, catColor, removeTask, moveTask,
-  byTime, MAX_DAY_WEIGHT,
+  byTime, MAX_DAY_WEIGHT, weekStats, normalizeWeek,
 } from '../util';
-import { tap } from '../haptics';
+import { buildWeek } from '../ai';
+import { getApiKey } from '../storage';
+import { tap, bump, win, nope } from '../haptics';
 
 export default function Plan({ state, setState }) {
   const today = todayKey();
   const [day, setDay] = useState(today);
+  const [stage, setStage] = useState('');
+  const [note, setNote] = useState('');
   const tasks = state.week[day] || [];
   const ordered = tasks.map((t, i) => ({ t, i })).sort((a, b) => byTime(a.t, b.t));
 
@@ -24,9 +28,43 @@ export default function Plan({ state, setState }) {
   const busiest = Math.max(...weights);
   const total = weights.reduce((a, b) => a + b, 0);
 
+  // ponytail: only ever one week exists. Building the next one replaces it and carries
+  // forward how this one actually went, so week 2 is built on evidence, not the dossier
+  // alone. Keeping a week archive is the obvious upgrade if the user ever wants history.
+  const buildNext = async () => {
+    if (stage) return;
+    bump();
+    setNote('');
+    try {
+      const s = weekStats(state.week, state.categories);
+      const apiKey = await getApiKey(state.settings.provider);
+      const week = await buildWeek({
+        ...state.settings,
+        apiKey,
+        brief: state.brief,
+        goals: state.goals,
+        categories: state.categories.map((c) => c.name),
+        weekNumber: (state.weekNumber || 1) + 1,
+        previous:
+          `${s.pct}% of closed blocks done, ${s.missed} missed, ${s.open} never touched. ` +
+          `Weakest area: ${s.byCategory[s.byCategory.length - 1]?.name || 'none'}. ` +
+          `Hardest day: ${s.weakest ? DAY_LABELS[s.weakest.day] : 'none'}. ` +
+          'Push volume where they held, cut or reschedule where they did not.',
+        onStage: setStage,
+      });
+      setState({ ...state, week: normalizeWeek(week), weekNumber: (state.weekNumber || 1) + 1 });
+      win();
+    } catch (e) {
+      nope();
+      setNote(e.message);
+    } finally {
+      setStage('');
+    }
+  };
+
   return (
     <ScrollView contentContainerStyle={styles.body}>
-      <Label>Generated from your answers</Label>
+      <Label>Week {state.weekNumber || 1}</Label>
       <Text style={styles.h1}>Your week, balanced</Text>
       <Text style={styles.sub}>
         {total
@@ -92,6 +130,29 @@ export default function Plan({ state, setState }) {
         />
       )}
 
+      {total && state.brief ? (
+        <Card style={{ marginTop: 10 }}>
+          <Label>Next week</Label>
+          <Text style={styles.loadMeta}>
+            Only one week is planned at a time, in full detail. Build week {(state.weekNumber || 1) + 1} when this one
+            is done — it reads how this week actually went and pushes where you held.
+          </Text>
+          <TouchableOpacity style={[styles.next, stage && styles.dim]} onPress={buildNext} disabled={!!stage}>
+            {stage ? (
+              <View style={styles.busyRow}>
+                <ActivityIndicator color="#0a0a0a" size="small" />
+                <Text style={styles.nextText}>
+                  {stage === 'shape' ? 'Shaping the days…' : 'Writing every step…'}
+                </Text>
+              </View>
+            ) : (
+              <Text style={styles.nextText}>Build week {(state.weekNumber || 1) + 1}</Text>
+            )}
+          </TouchableOpacity>
+          {note ? <Text style={styles.loadMeta}>{note}</Text> : null}
+        </Card>
+      ) : null}
+
       {total ? (
         <>
           <Label style={{ marginTop: 24, marginBottom: 4 }}>
@@ -143,5 +204,9 @@ const styles = StyleSheet.create({
   loadHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
   loadDay: { fontSize: 13, color: C.txt, fontWeight: '500' },
   loadPct: { fontSize: 11, color: C.txt3, fontVariant: ['tabular-nums'] },
-  loadMeta: { fontSize: 11, color: C.txt3, marginTop: 5 },
+  loadMeta: { fontSize: 11, color: C.txt3, marginTop: 5, lineHeight: 16 },
+  next: { backgroundColor: C.accent, borderRadius: 11, paddingVertical: 13, alignItems: 'center', marginTop: 11 },
+  nextText: { color: '#0a0a0a', fontWeight: '700', fontSize: 13 },
+  busyRow: { flexDirection: 'row', alignItems: 'center', gap: 9 },
+  dim: { opacity: 0.4 },
 });

@@ -152,6 +152,48 @@ export function normalizeTask(t) {
   };
 }
 
+// ponytail: what the editor model gets to see. Titles, times and weights only - about a
+// tenth the tokens of the real week, and enough to reason about any day.
+export function compactWeek(week = {}) {
+  const out = {};
+  WEEK_ORDER.forEach((d) => {
+    out[d] = (week[d] || []).map((t) => `${t.time || 'anytime'} | ${t.title} | ${t.category} | w${taskWeight(t)}`);
+  });
+  return out;
+}
+
+function mergeSubs(before = [], next = []) {
+  return next.map((s) => {
+    const title = typeof s === 'string' ? s : s.title;
+    const hit = before.find((o) => o.title === title);
+    return { title, done: hit ? !!hit.done : !!s.done };
+  });
+}
+
+// Replaces only the days the coach actually touched, and keeps the ticks you already
+// made on any block whose title survived.
+export function mergeDays(week = {}, days = {}) {
+  const out = { ...week };
+  Object.entries(days).forEach(([d, tasks]) => {
+    if (!WEEK_ORDER.includes(d) || !Array.isArray(tasks)) return;
+    const before = week[d] || [];
+    out[d] = tasks.map((t) => {
+      const old = before.find((o) => o.title === t.title);
+      return normalizeTask(old ? { ...t, state: old.state, subs: mergeSubs(old.subs, t.subs || []) } : t);
+    });
+  });
+  return out;
+}
+
+export function addCategories(existing = [], names = [], palette = []) {
+  const out = [...existing];
+  names.forEach((name) => {
+    if (!name || out.some((c) => c.name.toLowerCase() === String(name).toLowerCase())) return;
+    out.push({ name, color: palette[out.length % palette.length] || '#7a7a84' });
+  });
+  return out;
+}
+
 export function normalizeWeek(week = {}) {
   const out = {};
   WEEK_ORDER.forEach((d) => {

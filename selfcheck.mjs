@@ -1,8 +1,8 @@
 import assert from 'node:assert';
-import { extractPlan, stripPlan, extractJSON, isReasoning, nowContext, defaultModel } from './src/ai.js';
+import { extractPlan, stripPlan, extractJSON, extractBrief, isReasoning, nowContext, defaultModel } from './src/ai.js';
 import {
   normalizeWeek, dayLoad, dayWeight, completion, catColor, parseHM, weekdayFor, WEEK_ORDER,
-  removeTask, moveTask, weekStats, byTime, taskPhase, subProgress,
+  removeTask, moveTask, weekStats, byTime, taskPhase, subProgress, mergeDays, compactWeek, addCategories,
 } from './src/util.js';
 
 const reply = `Here is the load: 340 hours over 16 weeks.
@@ -106,5 +106,37 @@ assert.equal(taskPhase({ time: '09:00' }, 9 * 60 + 59), 'now', 'no end time mean
 
 assert.deepEqual(subProgress({ subs: [{ done: true }, { done: false }] }), { done: 1, total: 2 });
 assert.deepEqual(subProgress({}), { done: 0, total: 0 });
+
+// a one-sentence edit rewrites only the days the coach returned, and never loses ticks
+const live = normalizeWeek({
+  mon: [{ title: 'Gym', time: '07:00', subs: ['Bench', 'Rows'] }, { title: 'Study', time: '21:00' }],
+  thu: [{ title: 'Guitar', time: '22:00' }],
+});
+live.mon[0].state = 'done';
+live.mon[0].subs[1].done = true;
+const after = mergeDays(live, {
+  mon: [{ title: 'Gym', time: '07:00', subs: ['Bench', 'Rows', 'Curls'] }],
+  thu: [],
+  nonsense: [{ title: 'x' }],
+});
+assert.equal(after.mon.length, 1, 'a day comes back complete, so the omitted block is deleted');
+assert.equal(after.mon[0].state, 'done', 'surviving block keeps its status');
+assert.deepEqual(after.mon[0].subs.map((s) => s.done), [false, true, false], 'ticked steps survive, new one does not');
+assert.equal(after.thu.length, 0, 'an empty day clears it');
+assert.equal(after.nonsense, undefined, 'a day the model invented is ignored');
+assert.equal(after.tue.length, 0, 'untouched days are untouched');
+
+// the editor sees a tenth of the tokens the real week costs
+const compact = compactWeek(live);
+assert.equal(compact.mon[0], '07:00 | Gym | undefined | w3');
+assert.ok(JSON.stringify(compact).length < JSON.stringify(live).length / 2, 'compact must actually be smaller');
+
+// categories the interview invents get appended with colours, never duplicated
+const cats = addCategories([{ name: 'Work', color: '#111' }], ['work', 'Guitar', 'Sleep'], ['#a', '#b', '#c']);
+assert.deepEqual(cats.map((c) => c.name), ['Work', 'Guitar', 'Sleep'], 'case-insensitive dedupe');
+assert.ok(cats[1].color, 'new categories get a colour');
+
+assert.equal(extractBrief('{"brief":"he works 10 to 8","goals":[]}').brief, 'he works 10 to 8');
+assert.equal(extractBrief('{"week":{}}'), null, 'a week is not a dossier');
 
 console.log('selfcheck ok');

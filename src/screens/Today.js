@@ -6,10 +6,10 @@ import { Card, Label, Ticker, Bar, Empty } from '../components/ui';
 import TaskRow from '../components/TaskRow';
 import Mic from '../components/Mic';
 import {
-  todayKey, catColor, normalizeWeek, normalizeTask, removeTask, moveTask, dayLoad,
+  todayKey, catColor, normalizeTask, removeTask, moveTask, dayLoad, mergeDays,
   DAY_LABELS, byTime, taskPhase,
 } from '../util';
-import { chat, extractPlan, stripPlan, splitTask } from '../ai';
+import { splitTask, commandWeek } from '../ai';
 import { getApiKey } from '../storage';
 import { tap, bump, win, nope } from '../haptics';
 
@@ -72,6 +72,9 @@ export default function Today({ state, setState }) {
     setAdding(false);
   };
 
+  // ponytail: sends the compact week and gets back ONLY the days it touched, so one
+  // sentence can add, delete, move or rewrite blocks on any day of the week for a
+  // fraction of the tokens a full-week rewrite costs.
   const askCoach = async () => {
     if (!coachText.trim() || busy) return;
     bump();
@@ -79,29 +82,18 @@ export default function Today({ state, setState }) {
     setReply('');
     try {
       const apiKey = await getApiKey(state.settings.provider);
-      const out = await chat({
+      const { days, note } = await commandWeek({
         ...state.settings,
         apiKey,
-        messages: [
-          {
-            role: 'user',
-            content:
-              'Here is my current week plan as json:\n' +
-              JSON.stringify(state.week) +
-              '\n\nSomething changed: ' +
-              coachText +
-              '\n\nReschedule around it. Protect the deadlines, keep every day inside the weight ' +
-              'limits, and reply with two sentences explaining the trade before the json.',
-          },
-        ],
+        week: state.week,
+        instruction: coachText,
+        categories: state.categories.map((c) => c.name),
+        brief: state.brief,
       });
-      const plan = extractPlan(out);
-      setReply(stripPlan(out));
-      if (plan) {
-        setState({ ...state, week: normalizeWeek(plan.week) });
-        setCoachText('');
-        win();
-      }
+      setState({ ...state, week: mergeDays(state.week, days) });
+      setReply(note || 'Done.');
+      setCoachText('');
+      win();
     } catch (e) {
       nope();
       setReply(e.message);
@@ -226,7 +218,7 @@ export default function Today({ state, setState }) {
         ) : null}
 
         <TouchableOpacity style={[styles.primary, { marginTop: 10 }]} onPress={() => { tap(); setCoachOpen(!coachOpen); }}>
-          <Text style={styles.primaryText}>Something changed. Fix my day.</Text>
+          <Text style={styles.primaryText}>Change anything, any day</Text>
         </TouchableOpacity>
 
         {coachOpen ? (
@@ -236,18 +228,21 @@ export default function Today({ state, setState }) {
               value={coachText}
               onChangeText={setCoachText}
               multiline
-              placeholder="Fever since morning. I can't train today."
+              placeholder="Delete Thursday's guitar and move Friday's gym to Saturday morning"
               placeholderTextColor={C.txt3}
             />
+            <Text style={styles.note}>
+              Name any day, not just today. Add, delete, move or rewrite — one sentence does all of it.
+            </Text>
             <Mic style={{ marginTop: 8 }} label="Say it instead" onText={(t) => setCoachText((c) => (c ? c + ' ' + t : t))} />
             <TouchableOpacity style={[styles.primary, !coachText.trim() && styles.dim]} onPress={askCoach} disabled={busy || !coachText.trim()}>
               {busy ? (
                 <View style={styles.busyRow}>
                   <ActivityIndicator color="#0a0a0a" size="small" />
-                  <Text style={styles.primaryText}>Rebuilding the week…</Text>
+                  <Text style={styles.primaryText}>Rewriting those days…</Text>
                 </View>
               ) : (
-                <Text style={styles.primaryText}>Reschedule</Text>
+                <Text style={styles.primaryText}>Apply</Text>
               )}
             </TouchableOpacity>
             {reply ? <Text style={styles.reply}>{reply}</Text> : null}

@@ -6,33 +6,24 @@ import { Ionicons } from '@expo/vector-icons';
 import { C } from '../theme';
 import { Label, Bar } from '../components/ui';
 import Mic from '../components/Mic';
-import { chat, extractPlan, stripPlan } from '../ai';
+import { chat, extractBrief, stripPlan, buildWeek } from '../ai';
 import { getApiKey } from '../storage';
 import { tap, win, nope } from '../haptics';
 
 const OPENER =
-  'Tell me what you actually want to change. Say it however it comes out — no categories, no dates unless you have them.';
+  'Tell me what you actually want to change. Say it however it comes out, or paste a plan you already wrote — I will only ask about what it leaves out.';
 
-// Plan generation takes a while on the slower models. Silence reads as a hang, so the
-// wait narrates itself.
-const STAGES = [
-  'Reading everything you told me…',
-  'Working out the real hours this needs…',
-  'Splitting each goal into blocks…',
-  'Balancing the load across seven days…',
-  'Writing what each one costs you…',
-];
+// The build is two real stages, so the wait narrates the one it is actually in.
+const STAGE_TEXT = {
+  shape: 'Laying out week one — balancing seven days before writing a single step…',
+  detail: 'Writing the steps inside every block, one day at a time, all seven at once…',
+};
 
-function Building() {
-  const [stage, setStage] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => setStage((s) => Math.min(s + 1, STAGES.length - 1)), 4200);
-    return () => clearInterval(id);
-  }, []);
+function Building({ stage }) {
   return (
     <View style={styles.building}>
       <ActivityIndicator color={C.accent} />
-      <Text style={styles.buildingText}>{STAGES[stage]}</Text>
+      <Text style={styles.buildingText}>{STAGE_TEXT[stage]}</Text>
     </View>
   );
 }
@@ -61,13 +52,13 @@ export default function Onboarding({ settings, onPlan }) {
   const [messages, setMessages] = useState([{ role: 'assistant', content: OPENER }]);
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
+  const [stage, setStage] = useState('');
   const [error, setError] = useState('');
   const scroller = useRef(null);
 
   const answered = messages.filter((m) => m.role === 'user').length;
-  const pct = Math.min(100, Math.round((answered / 7) * 100));
-  // Past question four the model usually has enough to plan, so stop promising more.
-  const deep = answered >= 4;
+  const pct = Math.min(100, Math.round((answered / 14) * 100));
+  const deep = answered >= 8;
 
   const send = async () => {
     const text = draft.trim();
@@ -81,16 +72,26 @@ export default function Onboarding({ settings, onPlan }) {
     try {
       const apiKey = await getApiKey(settings.provider);
       const reply = await chat({ ...settings, apiKey, messages: next.filter((m) => m.content !== OPENER) });
-      const plan = extractPlan(reply);
-      setMessages([...next, { role: 'assistant', content: stripPlan(reply) || 'Your plan is ready.' }]);
-      if (plan) {
+      const brief = extractBrief(reply);
+      setMessages([...next, { role: 'assistant', content: stripPlan(reply) || 'Got it. Building week one.' }]);
+      if (brief) {
+        const categories = brief.categories || [];
+        const week = await buildWeek({
+          ...settings, apiKey,
+          brief: brief.brief,
+          goals: brief.goals || [],
+          categories,
+          weekNumber: 1,
+          onStage: setStage,
+        });
         win();
-        onPlan(plan);
+        onPlan({ goals: brief.goals || [], categories, brief: brief.brief, week });
       }
     } catch (e) {
       nope();
       setError(e.message);
     } finally {
+      setStage('');
       setBusy(false);
     }
   };
@@ -105,8 +106,8 @@ export default function Onboarding({ settings, onPlan }) {
         <Bar pct={pct} style={{ marginTop: 8 }} />
         <Text style={styles.headNote}>
           {deep
-            ? 'Almost there. It will build the plan as soon as it knows enough.'
-            : 'It asks up to seven short questions, then builds the whole week.'}
+            ? 'Almost there. It builds week one the moment it stops finding holes.'
+            : 'It interrogates first — intensity, equipment, your actual work hours — then builds week one in detail.'}
         </Text>
       </View>
 
@@ -121,7 +122,7 @@ export default function Onboarding({ settings, onPlan }) {
             <Text style={m.role === 'assistant' ? styles.ai : styles.user}>{m.content}</Text>
           </View>
         ))}
-        {busy ? (deep ? <Building /> : <Typing />) : null}
+        {stage ? <Building stage={stage} /> : busy ? <Typing /> : null}
         {error ? (
           <View style={styles.errorBox}>
             <Ionicons name="alert-circle-outline" size={16} color={C.accent} />
